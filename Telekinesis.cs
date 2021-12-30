@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "WhiteThunder", "3.0.0")]
+    [Info("Telekinesis", "WhiteThunder", "3.1.0")]
     [Description("Allows players to move and rotate objects in place.")]
     internal class Telekinesis : CovalencePlugin
     {
@@ -99,17 +99,25 @@ namespace Oxide.Plugins
             }
 
             // Allow plugins to replace the target entity with a more suitable one (e.g., the parent entity).
-            public static BaseEntity OnTelekinesisStart(BasePlayer player, BaseEntity entity)
+            public static Tuple<BaseEntity, BaseEntity> OnTelekinesisStart(BasePlayer player, BaseEntity entity)
             {
-                return Interface.CallHook("OnTelekinesisStart", player, entity) as BaseEntity;
+                var result = Interface.CallHook("OnTelekinesisStart", player, entity);
+                if (result is Tuple<BaseEntity, BaseEntity>)
+                    return (Tuple<BaseEntity, BaseEntity>)result;
+
+                var resultEntity = result as BaseEntity;
+                if (resultEntity != null)
+                    return new Tuple<BaseEntity, BaseEntity>(resultEntity, resultEntity);
+
+                return new Tuple<BaseEntity, BaseEntity>(entity, entity);
             }
 
             // Allow plugins to prevent telekinesis based on arbitrary circumstances.
-            public static bool CanStartTelekinesis(BasePlayer player, BaseEntity entity, out string errorMessage)
+            public static bool CanStartTelekinesis(BasePlayer player, BaseEntity moveEntity, BaseEntity rotateEntity, out string errorMessage)
             {
                 errorMessage = null;
 
-                object hookResult = Interface.CallHook("CanStartTelekinesis", player, entity);
+                object hookResult = Interface.CallHook("CanStartTelekinesis", player, moveEntity, rotateEntity);
                 if (hookResult is bool && (bool)hookResult == false)
                     return false;
 
@@ -121,15 +129,15 @@ namespace Oxide.Plugins
             }
 
             // Notify plugins that telekinesis started.
-            public static void OnTelekinesisStarted(BasePlayer player, BaseEntity entity)
+            public static void OnTelekinesisStarted(BasePlayer player, BaseEntity moveEntity, BaseEntity rotateEntity)
             {
-                Interface.CallHook("OnTelekinesisStarted", player, entity);
+                Interface.CallHook("OnTelekinesisStarted", player, moveEntity, rotateEntity);
             }
 
             // Notify plugins that telekinesis stopped.
-            public static void OnTelekinesisStopped(BasePlayer player, BaseEntity entity)
+            public static void OnTelekinesisStopped(BasePlayer player, BaseEntity moveEntity, BaseEntity rotateEntity)
             {
-                Interface.CallHook("OnTelekinesisStopped", player, entity);
+                Interface.CallHook("OnTelekinesisStopped", player, moveEntity, rotateEntity);
             }
         }
 
@@ -156,11 +164,11 @@ namespace Oxide.Plugins
             {
                 _telekinesisManager.StopPlayerTelekinesis(basePlayer);
 
-                BaseEntity previousEntity;
-                if (_undoManager.TryUndo(basePlayer.userID, out previousEntity))
+                BaseEntity previousMoveEntity, previousRotateEntity;
+                if (_undoManager.TryUndo(basePlayer.userID, out previousMoveEntity, out previousRotateEntity))
                 {
                     ReplyToPlayer(player, Lang.UndoSuccess);
-                    ExposedHooks.OnTelekinesisStopped(basePlayer, previousEntity);
+                    ExposedHooks.OnTelekinesisStopped(basePlayer, previousMoveEntity, previousRotateEntity);
                 }
                 else
                 {
@@ -289,13 +297,13 @@ namespace Oxide.Plugins
             public void Register(TelekinesisComponent component)
             {
                 _playerComponents[component.Player] = component;
-                ExposedHooks.OnTelekinesisStarted(component.Player, component.Entity);
+                ExposedHooks.OnTelekinesisStarted(component.Player, component.MoveEntity, component.RotateEntity);
             }
 
             public void Unregister(TelekinesisComponent component)
             {
                 _playerComponents.Remove(component.Player);
-                ExposedHooks.OnTelekinesisStopped(component.Player, component.Entity);
+                ExposedHooks.OnTelekinesisStopped(component.Player, component.MoveEntity, component.RotateEntity);
             }
 
             public bool IsBeingControlled(BaseEntity entity)
@@ -327,14 +335,14 @@ namespace Oxide.Plugins
                     return false;
                 }
 
-                // Allow plugins to swap out the entity for another.
-                var replacementEntity = ExposedHooks.OnTelekinesisStart(player, entity);
-                if (replacementEntity != null && !replacementEntity.IsDestroyed)
-                    entity = replacementEntity;
+                // Allow plugins to swap out the entities.
+                var entitiesToTransform = ExposedHooks.OnTelekinesisStart(player, entity);
+                var moveEntity = entitiesToTransform.Item1;
+                var rotateEntity = entitiesToTransform.Item2;
 
                 // Allow plugins to prevent telekinesis on specific entities.
                 string errorMessage;
-                if (!ExposedHooks.CanStartTelekinesis(player, entity, out errorMessage))
+                if (!ExposedHooks.CanStartTelekinesis(player, moveEntity, rotateEntity, out errorMessage))
                 {
                     if (errorMessage != null)
                         player.ChatMessage(errorMessage);
@@ -344,8 +352,8 @@ namespace Oxide.Plugins
                     return false;
                 }
 
-                var restorePoint = _undoManager.SaveEntityPosition(player.userID, entity);
-                TelekinesisComponent.AddToEntity(entity, this, player, ruleset, restorePoint);
+                var restorePoint = _undoManager.SaveEntityPosition(player.userID, moveEntity, rotateEntity);
+                TelekinesisComponent.AddToEntity(moveEntity, rotateEntity, this, player, ruleset, restorePoint);
                 RemoveActiveItem(player);
 
                 var modeMessage = _pluginInstance.GetModeMessage(player, TelekinesisMode.MovePlayerOffset);
@@ -389,29 +397,34 @@ namespace Oxide.Plugins
         {
             private const float ExpirationSeconds = 300;
 
-            public bool IsValid => _entity != null && !_entity.IsDestroyed;
+            public bool IsValid => _moveEntity != null
+                && !_moveEntity.IsDestroyed
+                && _rotateEntity != null
+                && !_rotateEntity.IsDestroyed;
 
             private PluginTimers _pluginTimers;
-            private BaseEntity _entity;
+            private BaseEntity _moveEntity;
+            private BaseEntity _rotateEntity;
             private Vector3 _localPosition;
             private Quaternion _localRotation;
             private Action _cleanup;
             private Timer _timer;
 
-            public EntityRestorePoint(PluginTimers pluginTimers, BaseEntity entity, Action cleanup)
+            public EntityRestorePoint(PluginTimers pluginTimers, BaseEntity moveEntity, BaseEntity rotateEntity, Action cleanup)
             {
                 _pluginTimers = pluginTimers;
 
-                var transform = entity.transform;
-                _entity = entity;
-                _localPosition = transform.localPosition;
-                _localRotation = transform.localRotation;
+                _moveEntity = moveEntity;
+                _rotateEntity = rotateEntity;
+                _localPosition = moveEntity.transform.localPosition;
+                _localRotation = rotateEntity.transform.localRotation;
                 _cleanup = cleanup;
             }
 
-            public bool TryRestore(out BaseEntity entity)
+            public bool TryRestore(out BaseEntity moveEntity, out BaseEntity rotateEntity)
             {
-                entity = _entity;
+                moveEntity = _moveEntity;
+                rotateEntity = _rotateEntity;
 
                 if (!IsValid)
                 {
@@ -419,10 +432,12 @@ namespace Oxide.Plugins
                     return false;
                 }
 
-                var transform = entity.transform;
-                transform.localPosition = _localPosition;
-                transform.localRotation = _localRotation;
-                BroadcastEntityTransformChange(entity);
+                _moveEntity.transform.localPosition = _localPosition;
+                _rotateEntity.transform.localRotation = _localRotation;
+                BroadcastEntityTransformChange(_moveEntity);
+
+                if (_rotateEntity != _moveEntity)
+                    BroadcastEntityTransformChange(_rotateEntity);
 
                 Destroy();
                 return true;
@@ -453,25 +468,26 @@ namespace Oxide.Plugins
                 _pluginTimers = pluginTimers;
             }
 
-            public EntityRestorePoint SaveEntityPosition(ulong userId, BaseEntity entity)
+            public EntityRestorePoint SaveEntityPosition(ulong userId, BaseEntity moveEntity, BaseEntity rotateEntity)
             {
                 GetRestorePoint(userId)?.Destroy();
 
-                var restorePoint = new EntityRestorePoint(_pluginTimers, entity, () => _playerRestorePoints.Remove(userId));
+                var restorePoint = new EntityRestorePoint(_pluginTimers, moveEntity, rotateEntity, () => _playerRestorePoints.Remove(userId));
                 _playerRestorePoints[userId] = restorePoint;
                 return restorePoint;
             }
 
-            public bool TryUndo(ulong userId, out BaseEntity entity)
+            public bool TryUndo(ulong userId, out BaseEntity moveEntity, out BaseEntity rotateEntity)
             {
                 var restorePoint = GetRestorePoint(userId);
                 if (restorePoint == null)
                 {
-                    entity = null;
+                    moveEntity = null;
+                    rotateEntity = null;
                     return false;
                 }
 
-                return restorePoint.TryRestore(out entity);
+                return restorePoint.TryRestore(out moveEntity, out rotateEntity);
             }
 
             private EntityRestorePoint GetRestorePoint(ulong userId)
@@ -533,8 +549,8 @@ namespace Oxide.Plugins
 
             private const float ModeChangeDelay = 0.25f;
 
-            public static void AddToEntity(BaseEntity entity, TelekinesisManager manager, BasePlayer player, PlayerRuleset ruleset, EntityRestorePoint restorePoint) =>
-                entity.gameObject.AddComponent<TelekinesisComponent>().Init(manager, player, ruleset, restorePoint);
+            public static void AddToEntity(BaseEntity moveEntity, BaseEntity rotateEntity, TelekinesisManager manager, BasePlayer player, PlayerRuleset ruleset, EntityRestorePoint restorePoint) =>
+                moveEntity.gameObject.AddComponent<TelekinesisComponent>().Init(rotateEntity, manager, player, ruleset, restorePoint);
 
             public static TelekinesisComponent GetForEntity(BaseEntity entity) =>
                 entity.gameObject.GetComponent<TelekinesisComponent>();
@@ -542,10 +558,12 @@ namespace Oxide.Plugins
             public static void RemoveFromEntity(BaseEntity entity) =>
                 GetForEntity(entity)?.DestroyImmediate();
 
-            public BaseEntity Entity { get; private set; }
+            public BaseEntity MoveEntity { get; private set; }
+            public BaseEntity RotateEntity { get; private set; }
             public BasePlayer Player { get; private set; }
 
-            private Transform _entityTransform;
+            private Transform _moveEntityTransform;
+            private Transform _rotateEntityTransform;
             private PlayerRuleset _ruleset;
             private TelekinesisManager _manager;
             private EntityRestorePoint _restorePoint;
@@ -570,10 +588,12 @@ namespace Oxide.Plugins
             // Keep track of original rigid body settings so they can be restored.
             private RigidbodyRestorePoint _rigidbodyRestore;
 
-            public TelekinesisComponent Init(TelekinesisManager manager, BasePlayer player, PlayerRuleset ruleset, EntityRestorePoint restorePoint)
+            public TelekinesisComponent Init(BaseEntity rotateEntity, TelekinesisManager manager, BasePlayer player, PlayerRuleset ruleset, EntityRestorePoint restorePoint)
             {
-                Entity = GetComponent<BaseEntity>();
-                _entityTransform = Entity.transform;
+                MoveEntity = GetComponent<BaseEntity>();
+                RotateEntity = rotateEntity;
+                _moveEntityTransform = MoveEntity.transform;
+                _rotateEntityTransform = RotateEntity.transform;
                 Player = player;
 
                 _ruleset = ruleset;
@@ -583,7 +603,7 @@ namespace Oxide.Plugins
                 _restorePoint = restorePoint;
 
                 _lastMoved = UnityEngine.Time.realtimeSinceStartup;
-                _headOffset = InverseTransformPoint(player.eyes.position, _entityTransform.position, player.eyes.rotation);
+                _headOffset = InverseTransformPoint(player.eyes.position, _moveEntityTransform.position, player.eyes.rotation);
 
                 _rigidbodyRestore = RigidbodyRestorePoint.CreateRestore(GetComponent<Rigidbody>());
 
@@ -702,15 +722,15 @@ namespace Oxide.Plugins
                             break;
 
                         case TelekinesisMode.RotateX:
-                            _entityTransform.Rotate(50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity), 0, 0);
+                            _rotateEntityTransform.Rotate(50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity), 0, 0);
                             break;
 
                         case TelekinesisMode.RotateY:
-                            _entityTransform.Rotate(0, -50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity), 0);
+                            _rotateEntityTransform.Rotate(0, -50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity), 0);
                             break;
 
                         case TelekinesisMode.RotateZ:
-                            _entityTransform.Rotate(0, 0, 50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity));
+                            _rotateEntityTransform.Rotate(0, 0, 50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity));
                             break;
                     }
                 }
@@ -723,30 +743,43 @@ namespace Oxide.Plugins
                     _lastBuildingBlockCheck = now;
 
                     // Perform the building block check at the entity location.
-                    if (Player.IsBuildingBlocked(new OBB(desiredPosition, _entityTransform.lossyScale, _entityTransform.rotation, Entity.bounds)))
+                    if (Player.IsBuildingBlocked(new OBB(desiredPosition, _moveEntityTransform.lossyScale, _moveEntityTransform.rotation, MoveEntity.bounds)))
                     {
                         DestroyImmediate(_pluginInstance?.GetMessageWithPrefix(Player, Lang.InfoDisableBuildlingBlocked));
                         return;
                     }
                 }
 
-                if (_entityTransform.position != desiredPosition)
+                if (_moveEntityTransform.position != desiredPosition)
                 {
-                    if ((desiredPosition - _entityTransform.position).sqrMagnitude > 0.0001f)
+                    if ((desiredPosition - _moveEntityTransform.position).sqrMagnitude > 0.0001f)
                     {
                         // Interpolate over longer distances (> 0.01) so the movement is less jumpy.
-                        _entityTransform.position = Vector3.Lerp(_entityTransform.position, desiredPosition, UnityEngine.Time.deltaTime * 15);
+                        _moveEntityTransform.position = Vector3.Lerp(_moveEntityTransform.position, desiredPosition, UnityEngine.Time.deltaTime * 15);
                     }
                     else
                     {
                         // Don't interpolate when really close, so that the position eventually matches.
-                        _entityTransform.position = desiredPosition;
+                        _moveEntityTransform.position = desiredPosition;
                     }
                 }
 
-                if (_entityTransform.hasChanged)
+                var hasChanged = false;
+
+                if (_moveEntityTransform.hasChanged)
                 {
-                    BroadcastEntityTransformChange(Entity, _entityTransform);
+                    BroadcastEntityTransformChange(MoveEntity, _moveEntityTransform);
+                    hasChanged = true;
+                }
+
+                if (_rotateEntityTransform.hasChanged)
+                {
+                    BroadcastEntityTransformChange(RotateEntity, _rotateEntityTransform);
+                    hasChanged = true;
+                }
+
+                if (hasChanged)
+                {
                     _lastMoved = UnityEngine.Time.realtimeSinceStartup;
                 }
                 else if (_lastMoved + _pluginConfig.IdleTimeout < UnityEngine.Time.realtimeSinceStartup)

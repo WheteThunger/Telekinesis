@@ -180,26 +180,31 @@ BaseEntity OnTelekinesisFindFailed(BasePlayer player)
 ```csharp
 BaseEntity OnTelekinesisStart(BasePlayer player, BaseEntity entity)
 ```
+```csharp
+Tuple<BaseEntity, BaseEntity> OnTelekinesisStart(BasePlayer player, BaseEntity entity)
+```
 
 - Called after Telekinesis has found a target entity, before the session has started.
 - Returning a `BaseEntity` will cause Telekinesis to grab that entity instead of the one that was found.
-- Returning `null` will use the entity that Telekinesis found, or one that another plugin provided.
+- Returning a `Tuple<BaseEntity, BaseEntity>` will cause Telekinesis to move the first entity while rotating the second.
+- Returning `null` will use the entity that Telekinesis found, or one(s) that another plugin provided.
 - This is useful to swap out which entity is going to be controlled. For example, to control a parent entity instead of the child.
 
 #### CanStartTelekinesis
 
 ```csharp
-object CanStartTelekinesis(BasePlayer player, BaseEntity entity)
+object CanStartTelekinesis(BasePlayer player, BaseEntity moveEntity, BaseEntity rotateEntity)
 ```
 
 - Called when a Telekinesis session is about to start.
+- The first entity will receive position updates, while the second will receive rotation updates. These will be the same entity most of the time, unless another plugin provided an alternate entity for rotation.
 - Returning `false` or a `string` will prevent the Telekinesis session from starting. If returning a `string`, the value will be sent to the player as a chat message.
 - Returning `null` will allow the session to start, unless another plugin blocks it.
 
 #### OnTelekinesisStarted
 
 ```csharp
-void OnTelekinesisStarted(BasePlayer player, BaseEntity entity)
+void OnTelekinesisStarted(BasePlayer player, BaseEntity moveEntity, BaseEntity rotateEntity)
 ```
 
 - Called after a Telekinesis session has started.
@@ -208,7 +213,7 @@ void OnTelekinesisStarted(BasePlayer player, BaseEntity entity)
 #### OnTelekinesisStopped
 
 ```csharp
-void OnTelekinesisStopped(BasePlayer player, BaseEntity entity)
+void OnTelekinesisStopped(BasePlayer player, BaseEntity moveEntity, BaseEntity rotateEntity)
 ```
 
 - Called after a Telekinesis session has ended.
