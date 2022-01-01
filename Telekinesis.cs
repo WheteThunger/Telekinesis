@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "WhiteThunder", "3.1.0")]
+    [Info("Telekinesis", "WhiteThunder", "3.1.1")]
     [Description("Allows players to move and rotate objects in place.")]
     internal class Telekinesis : CovalencePlugin
     {
@@ -236,7 +236,7 @@ namespace Oxide.Plugins
             return Quaternion.Inverse(rotation) * (worldPosition - origin);
         }
 
-        private static BaseEntity GetLookEntity(BasePlayer player, int layerMask = Rust.Layers.Solid, float maxDistance = 9)
+        private static BaseEntity GetLookEntity(BasePlayer player, int layerMask = Physics.DefaultRaycastLayers, float maxDistance = 15)
         {
             RaycastHit hit;
             return Physics.Raycast(player.eyes.HeadRay(), out hit, maxDistance, layerMask, QueryTriggerInteraction.Ignore)
