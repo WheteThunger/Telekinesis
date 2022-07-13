@@ -219,6 +219,13 @@ namespace Oxide.Plugins
                 return;
             }
 
+            if (entity is BaseVehicleModule)
+            {
+                var vehicleModule = (BaseVehicleModule)entity;
+                if (vehicleModule.Vehicle != null)
+                    entity = vehicleModule.Vehicle;
+            }
+
             _telekinesisManager.TryStartTelekinesis(basePlayer, entity, ruleset);
         }
 
@@ -518,6 +525,7 @@ namespace Oxide.Plugins
             {
                 private Rigidbody _rigidBody;
                 private bool _useGravity;
+                private bool _isKinematic;
 
                 public static RigidbodyRestorePoint CreateRestore(Rigidbody rigidbody)
                 {
@@ -531,9 +539,11 @@ namespace Oxide.Plugins
                     {
                         _rigidBody = rigidbody,
                         _useGravity = rigidbody.useGravity,
+                        _isKinematic = rigidbody.isKinematic,
                     };
 
                     rigidbody.useGravity = false;
+                    rigidbody.isKinematic = true;   
 
                     return restore;
                 }
@@ -544,6 +554,7 @@ namespace Oxide.Plugins
                         return;
 
                     _rigidBody.useGravity = _useGravity;
+                    _rigidBody.isKinematic = _isKinematic;
                 }
             }
 
