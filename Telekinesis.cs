@@ -262,6 +262,18 @@ namespace Oxide.Plugins
             entity.syncPosition = wasSyncPosition;
 
             transform.hasChanged = false;
+
+            if (entity is StabilityEntity)
+            {
+                // Not great for performance, but can be optimized later.
+                entity.TerminateOnClient(BaseNetworkable.DestroyMode.None);
+                entity.SendNetworkUpdateImmediate();
+
+                foreach (var child in entity.children)
+                {
+                    child.SendNetworkUpdateImmediate();
+                }
+            }
         }
 
         private static void RemoveActiveItem(BasePlayer player)
