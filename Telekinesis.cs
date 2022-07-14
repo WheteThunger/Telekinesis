@@ -532,7 +532,7 @@ namespace Oxide.Plugins
                     if (rigidbody == null)
                         return null;
 
-                    if (!rigidbody.useGravity)
+                    if (!rigidbody.useGravity && rigidbody.isKinematic)
                         return null;
 
                     var restore = new RigidbodyRestorePoint
@@ -543,7 +543,7 @@ namespace Oxide.Plugins
                     };
 
                     rigidbody.useGravity = false;
-                    rigidbody.isKinematic = true;   
+                    rigidbody.isKinematic = true;
 
                     return restore;
                 }
