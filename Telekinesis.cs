@@ -817,7 +817,8 @@ namespace Oxide.Plugins
                 if (Player == null
                     || Player.IsDestroyed
                     || Player.IsDead()
-                    || !Player.IsConnected)
+                    || !Player.IsConnected
+                    || (RotateEntity != MoveEntity && RotateEntity == null))
                 {
                     DestroyImmediate();
                     return;
