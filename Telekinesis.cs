@@ -341,7 +341,7 @@ namespace Oxide.Plugins
             public bool TryStartTelekinesis(BasePlayer player, BaseEntity entity, PlayerRuleset ruleset)
             {
                 // Prevent multiple players from simultaneously controlling the entity.
-                if (IsBeingControlled(player))
+                if (IsBeingControlled(entity))
                 {
                     _pluginInstance.ChatMessageWithPrefix(player, Lang.ErrorAlreadyBeingControlled);
                     return false;
