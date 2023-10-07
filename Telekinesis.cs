@@ -1,6 +1,5 @@
 ﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Newtonsoft.Json.Serialization;
 using Oxide.Core;
 using Oxide.Core.Libraries;
 using Oxide.Core.Libraries.Covalence;
@@ -11,7 +10,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "WhiteThunder", "3.2.0")]
+    [Info("Telekinesis", "WhiteThunder", "3.2.1")]
     [Description("Allows players to move and rotate objects in place.")]
     internal class Telekinesis : CovalencePlugin
     {
@@ -45,7 +44,9 @@ namespace Oxide.Plugins
             foreach (var ruleset in _pluginConfig.Rulesets)
             {
                 if (ruleset.Permission != null)
+                {
                     permission.RegisterPermission(ruleset.Permission, this);
+                }
             }
         }
 
@@ -223,7 +224,9 @@ namespace Oxide.Plugins
             {
                 var vehicleModule = (BaseVehicleModule)entity;
                 if (vehicleModule.Vehicle != null)
+                {
                     entity = vehicleModule.Vehicle;
+                }
             }
 
             _telekinesisManager.TryStartTelekinesis(basePlayer, entity, ruleset);
@@ -364,9 +367,13 @@ namespace Oxide.Plugins
                 if (!ExposedHooks.CanStartTelekinesis(player, moveEntity, rotateEntity, out errorMessage))
                 {
                     if (errorMessage != null)
+                    {
                         player.ChatMessage(errorMessage);
+                    }
                     else
+                    {
                         _pluginInstance.ChatMessageWithPrefix(player, Lang.ErrorBlockedByPlugin);
+                    }
 
                     return false;
                 }
@@ -705,7 +712,8 @@ namespace Oxide.Plugins
             {
                 if (Player.serverInput.IsDown(BUTTON.SPRINT))
                     return speedSettings.Fast;
-                else if (Player.serverInput.IsDown(BUTTON.DUCK))
+
+                if (Player.serverInput.IsDown(BUTTON.DUCK))
                     return speedSettings.Slow;
 
                 return speedSettings.Normal;
@@ -723,10 +731,8 @@ namespace Oxide.Plugins
             private void MaybeMoveOrRotate(float now)
             {
                 var direction = Player.serverInput.IsDown(BUTTON.FIRE_PRIMARY)
-                    ? 1
-                    : Player.serverInput.IsDown(BUTTON.FIRE_SECONDARY)
-                    ? -1
-                    : 0;
+                    ? 1 : Player.serverInput.IsDown(BUTTON.FIRE_SECONDARY)
+                    ? -1 : 0;
 
                 var eyeRotation = Player.eyes.rotation;
 
@@ -768,7 +774,7 @@ namespace Oxide.Plugins
                     // Perform the building block check at the entity location.
                     if (Player.IsBuildingBlocked(new OBB(desiredPosition, _moveEntityTransform.lossyScale, _moveEntityTransform.rotation, MoveEntity.bounds)))
                     {
-                        DestroyImmediate(_pluginInstance?.GetMessageWithPrefix(Player, Lang.InfoDisableBuildlingBlocked));
+                        DestroyImmediate(_pluginInstance?.GetMessageWithPrefix(Player, Lang.InfoDisableBuildingBlocked));
                         return;
                     }
                 }
@@ -834,13 +840,14 @@ namespace Oxide.Plugins
             {
                 _pluginInstance?.TrackStart();
                 DoUpdate();
-                _pluginInstance.TrackEnd();
+                _pluginInstance?.TrackEnd();
             }
 
             private void OnDestroy()
             {
                 _rigidbodyRestore?.Restore();
                 _restorePoint?.StartExpirationTimer();
+                MoveEntity.GetComponent<Buoyancy>()?.Wake();
                 _manager.Unregister(this);
 
                 if (!_wasDestroyedForExplicitReason && Player != null)
@@ -960,7 +967,7 @@ namespace Oxide.Plugins
 
         #endregion
 
-        #region Configuration Boilerplate
+        #region Configuration Helpers
 
         private class SerializableConfiguration
         {
@@ -1000,7 +1007,7 @@ namespace Oxide.Plugins
 
         private bool MaybeUpdateConfigDict(Dictionary<string, object> currentWithDefaults, Dictionary<string, object> currentRaw)
         {
-            bool changed = false;
+            var changed = false;
 
             foreach (var key in currentWithDefaults.Keys)
             {
@@ -1079,7 +1086,9 @@ namespace Oxide.Plugins
             var message = GetMessage(playerId, messageName, args);
 
             if (_pluginConfig.EnableMessagePrefix)
+            {
                 message = GetMessage(playerId, Lang.MessagePrefix) + message;
+            }
 
             return message;
         }
@@ -1139,11 +1148,10 @@ namespace Oxide.Plugins
             public const string ErrorMaxDistance = "Error.MaxDistance";
 
             public const string MessagePrefix = "MessagePrefix";
-            public const string InfoControls = "Info.Controls";
             public const string InfoEnabled = "Info.Enabled";
             public const string InfoDisabled = "Info.Disabled";
             public const string InfoDisableInactivity = "Info.Disabled.Inactivity";
-            public const string InfoDisableBuildlingBlocked = "Info.Disabled.BuildingBlocked";
+            public const string InfoDisableBuildingBlocked = "Info.Disabled.BuildingBlocked";
 
             public const string ErrorUndoNotFound = "Undo.Error.NotFound";
             public const string UndoSuccess = "Undo.Success";
@@ -1174,7 +1182,7 @@ namespace Oxide.Plugins
                 [Lang.InfoEnabled] = "Telekinesis has been enabled.\n{0}",
                 [Lang.InfoDisabled] = "Telekinesis has been disabled.",
                 [Lang.InfoDisableInactivity] = "Telekinesis has been disabled due to inactivity.",
-                [Lang.InfoDisableBuildlingBlocked] = "Telekinesis has been disabled because you are building blocked.",
+                [Lang.InfoDisableBuildingBlocked] = "Telekinesis has been disabled because you are building blocked.",
 
                 [Lang.ErrorUndoNotFound] = "No undo data found.",
                 [Lang.UndoSuccess] = "Your last telekinesis movement was undone.",
