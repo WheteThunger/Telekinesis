@@ -456,7 +456,9 @@ namespace Oxide.Plugins
                 _moveComponent = moveComponent;
                 _rotateComponent = rotateComponent;
                 _localPosition = moveComponent.transform.localPosition;
-                _localRotation = rotateComponent.transform.localRotation;
+                _localRotation = rotateComponent is BasePlayer rotatePlayer
+                    ? Quaternion.Euler(rotatePlayer.viewAngles)
+                    : rotateComponent.transform.localRotation;
                 _cleanup = cleanup;
             }
 
@@ -472,7 +474,14 @@ namespace Oxide.Plugins
                 }
 
                 _moveComponent.transform.localPosition = _localPosition;
-                _rotateComponent.transform.localRotation = _localRotation;
+                if (_rotateComponent is BasePlayer rotatePlayer)
+                {
+                    rotatePlayer.viewAngles = _localRotation.eulerAngles;
+                }
+                else
+                {
+                    _rotateComponent.transform.localRotation = _localRotation;
+                }
 
                 if (_moveComponent is BaseEntity moveEntity)
                 {
@@ -692,7 +701,10 @@ namespace Oxide.Plugins
                             _mode = TelekinesisMode.MovePlayerOffset;
                             break;
                         case TelekinesisMode.MovePlayerOffset:
-                            _mode = TelekinesisMode.RotateZ;
+                            // Can't rotate players on the Z axis, so skip RotateZ.
+                            _mode = RotateComponent is BasePlayer
+                                ? TelekinesisMode.RotateY
+                                : TelekinesisMode.RotateZ;
                             break;
                     }
                 }
@@ -710,7 +722,10 @@ namespace Oxide.Plugins
                             _mode = TelekinesisMode.RotateY;
                             break;
                         case TelekinesisMode.RotateY:
-                            _mode = TelekinesisMode.RotateZ;
+                            // Can't rotate players on the Z axis, so skip RotateZ.
+                            _mode = RotateComponent is BasePlayer
+                                ? TelekinesisMode.MovePlayerOffset
+                                : TelekinesisMode.RotateZ;
                             break;
                         case TelekinesisMode.RotateZ:
                             _mode = TelekinesisMode.MovePlayerOffset;
@@ -741,6 +756,27 @@ namespace Oxide.Plugins
                 _headOffset = newHeadOffset;
             }
 
+            private float GetMoveAdjustment(float deltaTimeAndDirection)
+            {
+                return deltaTimeAndDirection * GetSensitivityMultiplier(_config.MoveSensitivity);
+            }
+
+            private float GetRotationAdjustment(float deltaTimeAndDirection)
+            {
+                return 50f * deltaTimeAndDirection * GetSensitivityMultiplier(_config.RotateSensitivity);
+            }
+
+            private void RotateViewAngles(BasePlayer rotatePlayer)
+            {
+                var rotation = _rotateTransform.rotation;
+                rotatePlayer.viewAngles = rotation.eulerAngles;
+
+                if (rotatePlayer is NPCShopKeeper shopKeeper)
+                {
+                    shopKeeper.initialFacingDir = rotation * Vector3.forward;
+                }
+            }
+
             private void MaybeMoveOrRotate(float now)
             {
                 var direction = Player.serverInput.IsDown(BUTTON.FIRE_PRIMARY)
@@ -748,32 +784,60 @@ namespace Oxide.Plugins
                     ? -1 : 0;
 
                 var eyeRotation = Player.eyes.rotation;
+                var rotatePlayer = RotateComponent as BasePlayer;
 
                 if (direction != 0)
                 {
-                    var deltaTimeAndDirection = UnityEngine.Time.deltaTime * direction;
+                    var delta = UnityEngine.Time.deltaTime * direction;
 
                     switch (_mode)
                     {
                         case TelekinesisMode.MovePlayerOffset:
-                            SetHeadOffset(_headOffset + new Vector3(0, 0, deltaTimeAndDirection * GetSensitivityMultiplier(_config.MoveSensitivity)));
+                        {
+                            SetHeadOffset(_headOffset + new Vector3(0, 0, GetMoveAdjustment(delta)));
                             break;
+                        }
 
                         case TelekinesisMode.MoveY:
-                            SetHeadOffset(_headOffset + Quaternion.Inverse(eyeRotation) * new Vector3(0, deltaTimeAndDirection * GetSensitivityMultiplier(_config.MoveSensitivity), 0));
+                        {
+                            SetHeadOffset(_headOffset + Quaternion.Inverse(eyeRotation) * new Vector3(0, GetMoveAdjustment(delta), 0));
                             break;
+                        }
 
                         case TelekinesisMode.RotateX:
-                            _rotateTransform.Rotate(50f * deltaTimeAndDirection * GetSensitivityMultiplier(_config.RotateSensitivity), 0, 0);
+                        {
+                            var rotateAngle = GetRotationAdjustment(delta);
+                            _rotateTransform.Rotate(rotateAngle, 0, 0);
+                            if (rotatePlayer is not null)
+                            {
+                                RotateViewAngles(rotatePlayer);
+                            }
+
                             break;
+                        }
 
                         case TelekinesisMode.RotateY:
-                            _rotateTransform.Rotate(0, -50f * deltaTimeAndDirection * GetSensitivityMultiplier(_config.RotateSensitivity), 0);
+                        {
+                            var rotateAngle = -GetRotationAdjustment(delta);
+                            _rotateTransform.Rotate(0, rotateAngle, 0);
+                            if (rotatePlayer is not null)
+                            {
+                                RotateViewAngles(rotatePlayer);
+                            }
+
                             break;
+                        }
 
                         case TelekinesisMode.RotateZ:
-                            _rotateTransform.Rotate(0, 0, 50f * deltaTimeAndDirection * GetSensitivityMultiplier(_config.RotateSensitivity));
+                        {
+                            // Can't rotate players on the Z axis.
+                            if (rotatePlayer is null)
+                            {
+                                _rotateTransform.Rotate(0, 0, GetRotationAdjustment(delta));
+                            }
+
                             break;
+                        }
                     }
                 }
 
