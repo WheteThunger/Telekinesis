@@ -6,6 +6,7 @@ using Oxide.Core.Libraries.Covalence;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Oxide.Core.Plugins;
 using UnityEngine;
 
 namespace Oxide.Plugins
@@ -17,13 +18,16 @@ namespace Oxide.Plugins
         #region Fields
 
         private static Telekinesis _pluginInstance;
-        private static Configuration _pluginConfig;
+        private static Configuration _config;
 
         private const string PermissionAdmin = "telekinesis.admin";
         private const string PermissionRulesetFormat = "telekinesis.ruleset.{0}";
 
         private TelekinesisManager _telekinesisManager;
         private UndoManager _undoManager;
+
+        private readonly object True = true;
+        private readonly object False = false;
 
         public Telekinesis()
         {
@@ -41,7 +45,7 @@ namespace Oxide.Plugins
 
             permission.RegisterPermission(PermissionAdmin, this);
 
-            foreach (var ruleset in _pluginConfig.Rulesets)
+            foreach (var ruleset in _config.Rulesets)
             {
                 if (ruleset.Permission != null)
                 {
@@ -54,7 +58,7 @@ namespace Oxide.Plugins
         {
             _telekinesisManager.StopAll();
 
-            _pluginConfig = null;
+            _config = null;
             _pluginInstance = null;
         }
 
@@ -62,27 +66,32 @@ namespace Oxide.Plugins
 
         #region API
 
-        private bool API_IsBeingControlled(Component component)
+        [HookMethod(nameof(API_IsBeingControlled))]
+        public object API_IsBeingControlled(Component component)
         {
-            return _telekinesisManager.IsBeingControlled(component);
+            return _telekinesisManager.IsBeingControlled(component) ? True : False;
         }
 
-        private bool API_IsUsingTelekinesis(BasePlayer player)
+        [HookMethod(nameof(API_IsUsingTelekinesis))]
+        public object API_IsUsingTelekinesis(BasePlayer player)
         {
-            return _telekinesisManager.IsUsingTelekinesis(player);
+            return _telekinesisManager.IsUsingTelekinesis(player) ? True : False;
         }
 
-        private bool API_StartAdminTelekinesis(BasePlayer player, Component component)
+        [HookMethod(nameof(API_StartAdminTelekinesis))]
+        public bool API_StartAdminTelekinesis(BasePlayer player, Component component)
         {
             return _telekinesisManager.TryStartTelekinesis(player, component, PlayerRuleset.AdminRuleset);
         }
 
-        private void API_StopPlayerTelekinesis(BasePlayer player)
+        [HookMethod(nameof(API_StopPlayerTelekinesis))]
+        public void API_StopPlayerTelekinesis(BasePlayer player)
         {
             _telekinesisManager.StopPlayerTelekinesis(player);
         }
 
-        private void API_StopTargetTelekinesis(Component target)
+        [HookMethod(nameof(API_StopTargetTelekinesis))]
+        public void API_StopTargetTelekinesis(Component target)
         {
             _telekinesisManager.StopTargetTelekinesis(target);
         }
@@ -121,15 +130,12 @@ namespace Oxide.Plugins
             {
                 errorMessage = null;
 
-                object hookResult = Interface.CallHook("CanStartTelekinesis", player, moveComponent, rotateComponent);
-                if (hookResult is bool && (bool)hookResult == false)
+                var hookResult = Interface.CallHook("CanStartTelekinesis", player, moveComponent, rotateComponent);
+                if (hookResult is false)
                     return false;
 
                 errorMessage = hookResult as string;
-                if (errorMessage != null)
-                    return false;
-
-                return true;
+                return errorMessage == null;
             }
 
             // Notify plugins that telekinesis started.
@@ -155,7 +161,7 @@ namespace Oxide.Plugins
             if (player.IsServer)
                 return;
 
-            var ruleset = _pluginConfig.GetPlayerRuleset(permission, player.Id);
+            var ruleset = _config.GetPlayerRuleset(permission, player.Id);
             if (ruleset == null)
             {
                 ReplyToPlayer(player, Lang.ErrorNoPermission);
@@ -369,12 +375,10 @@ namespace Oxide.Plugins
                 }
 
                 // Allow plugins to swap out the entities.
-                var entitiesToTransform = ExposedHooks.OnTelekinesisStart(player, component);
-                var moveComponent = entitiesToTransform.Item1;
-                var rotateComponent = entitiesToTransform.Item2;
+                var (moveComponent, rotateComponent) = ExposedHooks.OnTelekinesisStart(player, component);
 
                 // Allow plugins to prevent telekinesis on specific entities.
-                if (!ExposedHooks.CanStartTelekinesis(player, moveComponent, rotateComponent, out string errorMessage))
+                if (!ExposedHooks.CanStartTelekinesis(player, moveComponent, rotateComponent, out var errorMessage))
                 {
                     if (errorMessage != null)
                     {
@@ -752,23 +756,23 @@ namespace Oxide.Plugins
                     switch (_mode)
                     {
                         case TelekinesisMode.MovePlayerOffset:
-                            SetHeadOffset(_headOffset + new Vector3(0, 0, deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.MoveSensitivity)));
+                            SetHeadOffset(_headOffset + new Vector3(0, 0, deltaTimeAndDirection * GetSensitivityMultiplier(_config.MoveSensitivity)));
                             break;
 
                         case TelekinesisMode.MoveY:
-                            SetHeadOffset(_headOffset + Quaternion.Inverse(eyeRotation) * new Vector3(0, deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.MoveSensitivity), 0));
+                            SetHeadOffset(_headOffset + Quaternion.Inverse(eyeRotation) * new Vector3(0, deltaTimeAndDirection * GetSensitivityMultiplier(_config.MoveSensitivity), 0));
                             break;
 
                         case TelekinesisMode.RotateX:
-                            _rotateTransform.Rotate(50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity), 0, 0);
+                            _rotateTransform.Rotate(50f * deltaTimeAndDirection * GetSensitivityMultiplier(_config.RotateSensitivity), 0, 0);
                             break;
 
                         case TelekinesisMode.RotateY:
-                            _rotateTransform.Rotate(0, -50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity), 0);
+                            _rotateTransform.Rotate(0, -50f * deltaTimeAndDirection * GetSensitivityMultiplier(_config.RotateSensitivity), 0);
                             break;
 
                         case TelekinesisMode.RotateZ:
-                            _rotateTransform.Rotate(0, 0, 50f * deltaTimeAndDirection * GetSensitivityMultiplier(_pluginConfig.RotateSensitivity));
+                            _rotateTransform.Rotate(0, 0, 50f * deltaTimeAndDirection * GetSensitivityMultiplier(_config.RotateSensitivity));
                             break;
                     }
                 }
@@ -776,7 +780,7 @@ namespace Oxide.Plugins
                 var eyePosition = Player.eyes.position;
                 var desiredPosition = TransformPoint(eyePosition, _headOffset, eyeRotation);
 
-                if (!_ruleset.CanUseWhileBuildingBlocked && _lastBuildingBlockCheck + _pluginConfig.BuildingBlockedCheckFrequency < now)
+                if (!_ruleset.CanUseWhileBuildingBlocked && _lastBuildingBlockCheck + _config.BuildingBlockedCheckFrequency < now)
                 {
                     _lastBuildingBlockCheck = now;
 
@@ -832,7 +836,7 @@ namespace Oxide.Plugins
                 {
                     _lastMoved = UnityEngine.Time.realtimeSinceStartup;
                 }
-                else if (_lastMoved + _pluginConfig.IdleTimeout < UnityEngine.Time.realtimeSinceStartup)
+                else if (_lastMoved + _config.IdleTimeout < UnityEngine.Time.realtimeSinceStartup)
                 {
                     DestroyImmediate(_pluginInstance?.GetMessageWithPrefix(Player, Lang.InfoDisableInactivity));
                     return;
@@ -1036,10 +1040,8 @@ namespace Oxide.Plugins
             {
                 if (currentRaw.TryGetValue(key, out var currentRawValue))
                 {
-                    var defaultDictValue = currentWithDefaults[key] as Dictionary<string, object>;
                     var currentDictValue = currentRawValue as Dictionary<string, object>;
-
-                    if (defaultDictValue != null)
+                    if (currentWithDefaults[key] is Dictionary<string, object> defaultDictValue)
                     {
                         if (currentDictValue == null)
                         {
@@ -1062,20 +1064,20 @@ namespace Oxide.Plugins
             return changed;
         }
 
-        protected override void LoadDefaultConfig() => _pluginConfig = GetDefaultConfig();
+        protected override void LoadDefaultConfig() => _config = GetDefaultConfig();
 
         protected override void LoadConfig()
         {
             base.LoadConfig();
             try
             {
-                _pluginConfig = Config.ReadObject<Configuration>();
-                if (_pluginConfig == null)
+                _config = Config.ReadObject<Configuration>();
+                if (_config == null)
                 {
                     throw new JsonException();
                 }
 
-                if (MaybeUpdateConfig(_pluginConfig))
+                if (MaybeUpdateConfig(_config))
                 {
                     LogWarning("Configuration appears to be outdated; updating and saving");
                     SaveConfig();
@@ -1092,7 +1094,7 @@ namespace Oxide.Plugins
         protected override void SaveConfig()
         {
             Log($"Configuration changes saved to {Name}.json");
-            Config.WriteObject(_pluginConfig, true);
+            Config.WriteObject(_config, true);
         }
 
         #endregion
@@ -1109,7 +1111,7 @@ namespace Oxide.Plugins
         {
             var message = GetMessage(playerId, messageName, args);
 
-            if (_pluginConfig.EnableMessagePrefix)
+            if (_config.EnableMessagePrefix)
             {
                 message = GetMessage(playerId, Lang.MessagePrefix) + message;
             }
@@ -1159,7 +1161,7 @@ namespace Oxide.Plugins
         private void SendModeChatMessage(BasePlayer player, TelekinesisMode mode) =>
             ChatMessageWithPrefix(player, GetModeMessage(player, mode));
 
-        private class Lang
+        private static class Lang
         {
             public const string ErrorNoPermission = "Error.NoPermission";
             public const string ErrorNoEntityFound = "Error.NoEntityFound";
