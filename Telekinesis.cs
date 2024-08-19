@@ -174,12 +174,18 @@ namespace Oxide.Plugins
 
             if (args.Length > 0 && args[0] == "undo")
             {
-                _telekinesisManager.StopPlayerTelekinesis(basePlayer);
-
                 if (_undoManager.TryUndo(basePlayer.userID, out var previousMoveComponent, out var previousRotateComponent))
                 {
+                    if (_telekinesisManager.IsUsingTelekinesis(basePlayer))
+                    {
+                        _telekinesisManager.StopPlayerTelekinesis(basePlayer);
+                    }
+                    else
+                    {
+                        ExposedHooks.OnTelekinesisStopped(basePlayer, previousMoveComponent, previousRotateComponent);
+                    }
+
                     ReplyToPlayer(player, Lang.UndoSuccess);
-                    ExposedHooks.OnTelekinesisStopped(basePlayer, previousMoveComponent, previousRotateComponent);
                 }
                 else
                 {
@@ -474,6 +480,7 @@ namespace Oxide.Plugins
                 }
 
                 _moveComponent.transform.localPosition = _localPosition;
+
                 if (_rotateComponent is BasePlayer rotatePlayer)
                 {
                     rotatePlayer.viewAngles = _localRotation.eulerAngles;
