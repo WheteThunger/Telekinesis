@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "WhiteThunder", "3.2.1")]
+    [Info("Telekinesis", "WhiteThunder", "3.3.0")]
     [Description("Allows players to move and rotate objects in place.")]
     internal class Telekinesis : CovalencePlugin
     {
