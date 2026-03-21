@@ -212,6 +212,12 @@ namespace Oxide.Plugins
                 }
             }
 
+            if (component is DeepSeaFloatingCity deepSeaFloatingCity)
+            {
+                ChatMessageWithPrefix(basePlayer, Lang.ErrorUnsupportedEntity, deepSeaFloatingCity.ShortPrefabName);
+                return;
+            }
+
             if (!ruleset.CanMovePlayers && component is BasePlayer)
             {
                 ChatMessageWithPrefix(basePlayer, Lang.ErrorCannotMovePlayers);
@@ -1239,6 +1245,7 @@ namespace Oxide.Plugins
             public const string ErrorAlreadyBeingControlled = "Error.AlreadyBeingControlled";
             public const string ErrorAlreadyUsingTelekinesis = "Error.AlreadyUsingTelekinesis";
             public const string ErrorBlockedByPlugin = "Error.BlockedByPlugin";
+            public const string ErrorUnsupportedEntity = "Error.UnsupportedEntity";
             public const string ErrorCannotMovePlayers = "Error.CannotMovePlayers";
             public const string ErrorNotOwned = "Error.NotOwned";
             public const string ErrorBuildingBlocked = "Error.BuildingBlocked";
@@ -1270,6 +1277,7 @@ namespace Oxide.Plugins
                 [Lang.ErrorAlreadyBeingControlled] = "That entity is already being controlled.",
                 [Lang.ErrorAlreadyUsingTelekinesis] = "You are already using telekinesis.",
                 [Lang.ErrorBlockedByPlugin] = "Another plugin blocked telekinesis.",
+                [Lang.ErrorUnsupportedEntity] = "Telekinesis does not support moving that type of entity: {0}.",
                 [Lang.ErrorCannotMovePlayers] = "You are not allowed to use telekinesis on players.",
                 [Lang.ErrorNotOwned] = "That do not own that entity.",
                 [Lang.ErrorBuildingBlocked] = "You are not allowed to use telekinesis while building blocked.",

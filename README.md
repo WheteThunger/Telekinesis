@@ -95,6 +95,7 @@ Default configuration:
   "Error.AlreadyBeingControlled": "That entity is already being controlled.",
   "Error.AlreadyUsingTelekinesis": "You are already using telekinesis.",
   "Error.BlockedByPlugin": "Another plugin blocked telekinesis.",
+  "Error.UnsupportedEntity": "Telekinesis does not support moving that type of entity: {0}.",
   "Error.CannotMovePlayers": "You are not allowed to use telekinesis on players.",
   "Error.NotOwned": "That do not own that entity.",
   "Error.BuildingBlocked": "You are not allowed to use telekinesis while building blocked.",
