@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Telekinesis", "WhiteThunder", "3.3.0")]
+    [Info("Telekinesis", "WhiteThunder", "3.3.1")]
     [Description("Allows players to move and rotate objects in place.")]
     internal class Telekinesis : CovalencePlugin
     {
@@ -248,6 +248,17 @@ namespace Oxide.Plugins
                 {
                     component = vehicleModule.Vehicle;
                 }
+            }
+
+            if (component is BoatBuildingBlock boatBuildingBlock)
+            {
+                if (!boatBuildingBlock.HasParentBoat(out var boat))
+                {
+                    ChatMessageWithPrefix(basePlayer, Lang.ErrorUnsupportedEntity, boatBuildingBlock.ShortPrefabName);
+                    return;
+                }
+
+                component = boat;
             }
 
             _telekinesisManager.TryStartTelekinesis(basePlayer, component, ruleset);
